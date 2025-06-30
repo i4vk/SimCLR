@@ -1,5 +1,6 @@
 import torch.nn as nn
-import torchvision.models as models
+from models.transformer import SpectralModel
+from torchvision import models
 
 from exceptions.exceptions import InvalidBackboneError
 
@@ -8,7 +9,11 @@ class ResNetSimCLR(nn.Module):
 
     def __init__(self, base_model, out_dim):
         super(ResNetSimCLR, self).__init__()
-        self.resnet_dict = {"resnet18": models.resnet18(pretrained=False, num_classes=out_dim),
+        self.model_dict = {"transformer": SpectralModel(in_channels=1, wav_min=190, wav_max=25000,
+                                                         emb_size=256, nhead=8, num_layers=4,
+                                                         dim_feedforward=512, dropout=0.1, use_mean_pool=False,
+                                                         output_dim=out_dim),
+                            "resnet18": models.resnet18(pretrained=False, num_classes=out_dim),
                             "resnet50": models.resnet50(pretrained=False, num_classes=out_dim)}
 
         self.backbone = self._get_basemodel(base_model)
@@ -19,12 +24,12 @@ class ResNetSimCLR(nn.Module):
 
     def _get_basemodel(self, model_name):
         try:
-            model = self.resnet_dict[model_name]
+            model = self.model_dict[model_name]
         except KeyError:
             raise InvalidBackboneError(
                 "Invalid backbone architecture. Check the config file and pass one of: resnet18 or resnet50")
         else:
             return model
 
-    def forward(self, x):
-        return self.backbone(x)
+    def forward(self, x, *args, **kwargs):
+        return self.backbone(x, *args, **kwargs)
