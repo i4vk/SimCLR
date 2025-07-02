@@ -105,6 +105,18 @@ class SimCLR(object):
                 self.scheduler.step()
             logging.debug(f"Epoch: {epoch_counter}\tLoss: {loss}\tTop1 accuracy: {top1[0]}")
 
+            if epoch_counter % 25 == 0:
+                logging.info(f"Saving model checkpoint at epoch {epoch_counter}.")
+                # save model checkpoints
+                os.makedirs(os.path.join(self.writer.log_dir, 'checkpoints'), exist_ok=True)
+                checkpoint_name = 'checkpoints/checkpoint_{:04d}.pth.tar'.format(epoch_counter)
+                save_checkpoint({
+                    'epoch': epoch_counter,
+                    'arch': self.args.arch,
+                    'state_dict': self.model.state_dict(),
+                    'optimizer': self.optimizer.state_dict(),
+                }, is_best=False, filename=os.path.join(self.writer.log_dir, checkpoint_name))
+
         logging.info("Training has finished.")
         # save model checkpoints
         checkpoint_name = 'checkpoint_{:04d}.pth.tar'.format(self.args.epochs)
