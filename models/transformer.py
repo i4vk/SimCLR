@@ -92,7 +92,7 @@ class SpectralTokenizer(nn.Module):
         self,
         intensities: torch.Tensor,      # (B, 1, L)
         wavelengths: torch.Tensor,      # (B, L)
-        padding_mask: torch.Tensor        # (B, L), True=válido, False=padding
+        padding_mask: torch.Tensor        # (B, L), False=válido, True=padding
     ):
         B, _, L = intensities.shape
 
@@ -112,8 +112,8 @@ class SpectralTokenizer(nn.Module):
         pad_emb = pad_emb.expand(B, L, -1)            # (B,L,D)
         tokens = torch.where(
             padding_mask.unsqueeze(-1),
-            pad_emb,    # si válido
-            tokens    # si padding
+            pad_emb,    # si padding
+            tokens    # si valido
         )
 
         return tokens, padding_mask
@@ -251,3 +251,13 @@ class SpectralModel(nn.Module):
             latents = self.fc(latents)
         return latents
 
+
+class RegressionModel(torch.nn.Module):
+    def __init__(self, base_model, emb_size, output_dim):
+        super(RegressionModel, self).__init__()
+        self.base_model = base_model
+        self.cls = nn.Linear(emb_size, output_dim)
+
+    def forward(self, x, wl, mask):
+        feats = self.base_model(x, wl, mask)
+        return self.cls(feats)  # (B, output_dim)

@@ -31,13 +31,32 @@ class ContrastiveLearningDataset:
             transforms.Lambda(lambda x: torch.tensor(x, dtype=torch.float32)),
             # Augmentación específica de espectros
             SpectralAugment(
-                p_noise=0.5 * s,
-                p_scale=0.5 * s,
-                p_shift=0.5 * s,
-                p_smooth=0.3 * s
+                p_noise = 0.5,
+                p_scale = 0.5,
+                p_shift = 0.5,
+                p_savgol = 0.3,
+                p_derivative = 0.3,
+                p_pca = 0.3,
+                p_emsa = 0.3
             ),
         ])
         return data_transforms
+
+    # @staticmethod
+    # def get_spectra_simclr_pipeline_transform(s=1):
+    #     """Return a set of data augmentation transformations for spectra data as described in the SimCLR paper."""
+    #     data_transforms = transforms.Compose([
+    #         # Asegurarnos de que la señal es un float tensor
+    #         transforms.Lambda(lambda x: torch.tensor(x, dtype=torch.float32)),
+    #         # Augmentación específica de espectros
+    #         SpectralAugment(
+    #             p_noise=0.5 * s,
+    #             p_scale=0.5 * s,
+    #             p_shift=0.5 * s,
+    #             p_smooth=0.3 * s
+    #         ),
+    #     ])
+    #     return data_transforms
         
 
     def get_dataset(self, name, n_views):
