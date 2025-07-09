@@ -35,9 +35,9 @@ class ContrastiveLearningDataset:
                 p_scale = 0.5,
                 p_shift = 0.5,
                 p_savgol = 0.3,
-                p_derivative = 0.3,
-                p_pca = 0.3,
-                p_emsa = 0.3
+                p_derivative = 0.0,
+                p_pca = 0.0,
+                p_emsa = 0.1
             ),
         ])
         return data_transforms

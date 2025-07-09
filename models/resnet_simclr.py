@@ -7,11 +7,11 @@ from exceptions.exceptions import InvalidBackboneError
 
 class ResNetSimCLR(nn.Module):
 
-    def __init__(self, base_model, out_dim):
+    def __init__(self, base_model, out_dim, args):
         super(ResNetSimCLR, self).__init__()
-        self.model_dict = {"transformer": SpectralModel(in_channels=1, wav_min=190, wav_max=25000,
-                                                         emb_size=256, nhead=8, num_layers=4,
-                                                         dim_feedforward=512, dropout=0.1, use_mean_pool=False,
+        self.model_dict = {"transformer": SpectralModel(in_channels=1, wav_min=args.wav_min, wav_max=args.wav_max,
+                                                         emb_size=args.emb_size, nhead=args.nhead, num_layers=args.num_layers,
+                                                         dim_feedforward=args.dim_feedforward, dropout=args.dropout, use_mean_pool=args.use_mean_pool,
                                                          output_dim=out_dim),
                             "resnet18": models.resnet18(pretrained=False, num_classes=out_dim),
                             "resnet50": models.resnet50(pretrained=False, num_classes=out_dim)}

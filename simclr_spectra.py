@@ -10,6 +10,9 @@ from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 from utils import save_config_file, accuracy, save_checkpoint
 
+from finetuning import finetuning_eval
+import optuna
+
 torch.manual_seed(0)
 
 
@@ -58,7 +61,7 @@ class SimCLR(object):
         logits = logits / self.args.temperature
         return logits, labels
 
-    def train(self, train_loader):
+    def train(self, train_loader, trial=None):
 
         scaler = GradScaler(enabled=self.args.fp16_precision)
 
@@ -98,6 +101,21 @@ class SimCLR(object):
                     self.writer.add_scalar('acc/top5', top5[0], global_step=n_iter)
                     self.writer.add_scalar('learning_rate', self.scheduler.get_lr()[0], global_step=n_iter)
 
+                    # evaluate the model on the test set
+                    results_val = finetuning_eval(self.model, epochs=10, lr=0.01, batch_size=32, 
+                                                repeats=1, k_spt=25, k_qry=25, device="cuda", 
+                                                output_dir=None, emb_size=self.args.emb_size)
+                    self.writer.add_scalar('val/mse', results_val.loc['mean']['mse_test'], global_step=n_iter)
+                    self.writer.add_scalar('val/mae', results_val.loc['mean']['mae_test'], global_step=n_iter)
+                    self.writer.add_scalar('val/r2', results_val.loc['mean']['r2_test'], global_step=n_iter)
+
+                    if trial is not None:
+                        # Report intermediate objective value for pruning
+                        trial.report(results_val.loc['mean']['r2_test'], step=n_iter)
+                        if trial.should_prune():
+                            logging.warning("Trial was pruned.")
+                            raise optuna.exceptions.TrialPruned()
+
                 n_iter += 1
 
             # warmup for the first 10 epochs
@@ -116,6 +134,7 @@ class SimCLR(object):
                     'state_dict': self.model.state_dict(),
                     'optimizer': self.optimizer.state_dict(),
                 }, is_best=False, filename=os.path.join(self.writer.log_dir, checkpoint_name))
+
 
         logging.info("Training has finished.")
         # save model checkpoints
