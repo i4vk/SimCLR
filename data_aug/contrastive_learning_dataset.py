@@ -26,21 +26,24 @@ class ContrastiveLearningDataset:
     @staticmethod
     def get_spectra_simclr_pipeline_transform(s=1):
         """Return a set of data augmentation transformations for spectra data as described in the SimCLR paper."""
-        data_transforms = transforms.Compose([
-            # Asegurarnos de que la señal es un float tensor
-            transforms.Lambda(lambda x: torch.tensor(x, dtype=torch.float32)),
-            # Augmentación específica de espectros
-            SpectralAugment(
-                p_noise = 0.5,
-                p_scale = 0.5,
-                p_shift = 0.5,
-                p_savgol = 0.3,
-                p_derivative = 0.0,
-                p_pca = 0.0,
-                p_emsa = 0.1
-            ),
-        ])
-        return data_transforms
+        # Transformación específica de espectros: tensorize y recorte
+        augment = SpectralAugment(
+            p_noise=0.5,
+            p_scale=0.5,
+            p_shift=0.5,
+            p_savgol=0.2,
+            p_derivative=0.0,
+            p_crop=0.3,
+            p_pca=0.0,
+            p_emsa=0.0
+        )
+        def transform(x, wl):
+            # Convertir array a tensor float
+            x_t = torch.tensor(x, dtype=torch.float32)
+            wl = torch.tensor(wl, dtype=torch.float32)
+            # Aplicar augment que retorna (x_mod, wl_mod)
+            return augment(x_t, wl)
+        return transform
 
     # @staticmethod
     # def get_spectra_simclr_pipeline_transform(s=1):
@@ -59,7 +62,7 @@ class ContrastiveLearningDataset:
     #     return data_transforms
         
 
-    def get_dataset(self, name, n_views):
+    def get_dataset(self, name, n_views, split='supp'):
         valid_datasets = {'cifar10': lambda: datasets.CIFAR10(self.root_folder, train=True,
                                                               transform=ContrastiveLearningViewGenerator(
                                                                   self.get_simclr_pipeline_transform(32),
@@ -71,7 +74,7 @@ class ContrastiveLearningDataset:
                                                               self.get_simclr_pipeline_transform(96),
                                                               n_views),
                                                           download=True),
-                            'spectra': lambda: SpectraDataset(self.root_folder,
+                            'spectra': lambda: SpectraDataset(self.root_folder, mode=split,
                                                             transform=ContrastiveLearningViewGenerator(
                                                                 self.get_spectra_simclr_pipeline_transform(),
                                                                 n_views))}

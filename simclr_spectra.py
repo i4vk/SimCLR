@@ -61,7 +61,7 @@ class SimCLR(object):
         logits = logits / self.args.temperature
         return logits, labels
 
-    def train(self, train_loader, trial=None):
+    def train(self, train_loader, val_loader=None, trial=None):
 
         scaler = GradScaler(enabled=self.args.fp16_precision)
 
@@ -75,8 +75,10 @@ class SimCLR(object):
         for epoch_counter in range(self.args.epochs):
             for images, wl, pad_mask, _ in tqdm(train_loader):
                 images = torch.cat(images, dim=0)
-                wl = wl.repeat(self.args.n_views, 1)
-                pad_mask = pad_mask.repeat(self.args.n_views, 1)
+                # wl = wl.repeat(self.args.n_views, 1)
+                wl = torch.cat(wl, dim=0)
+                # pad_mask = pad_mask.repeat(self.args.n_views, 1)
+                pad_mask = torch.cat(pad_mask, dim=0)
 
                 images = images.to(self.args.device)
                 wl = wl.to(self.args.device)
@@ -101,13 +103,41 @@ class SimCLR(object):
                     self.writer.add_scalar('acc/top5', top5[0], global_step=n_iter)
                     self.writer.add_scalar('learning_rate', self.scheduler.get_lr()[0], global_step=n_iter)
 
+                    # Añadir validación periódica
+                    if val_loader is not None:
+                        self.model.eval()
+                        val_loss = val_top1 = val_top5 = 0.0
+                        val_batches = 0
+                        with torch.no_grad():
+                            for images_val, wl_val, pad_mask_val, _ in val_loader:
+                                images_val = torch.cat(images_val, dim=0).to(self.args.device)
+                                # wl_val = wl_val.repeat(self.args.n_views, 1).to(self.args.device)
+                                # pad_mask_val = pad_mask_val.repeat(self.args.n_views, 1).to(self.args.device)
+                                wl_val = torch.cat(wl_val, dim=0).to(self.args.device)
+                                pad_mask_val = torch.cat(pad_mask_val, dim=0).to(self.args.device)
+                                features = self.model(images_val, wl_val, pad_mask_val)
+                                logits_v, labels_v = self.info_nce_loss(features)
+                                loss_v = self.criterion(logits_v, labels_v)
+                                t1, t5 = accuracy(logits_v, labels_v, topk=(1,5))
+                                val_loss += loss_v.item()
+                                val_top1 += t1[0].item()
+                                val_top5 += t5[0].item()
+                                val_batches += 1
+                        val_loss /= max(val_batches, 1)
+                        val_top1 /= max(val_batches, 1)
+                        val_top5 /= max(val_batches, 1)
+                        self.writer.add_scalar('val/loss', val_loss, global_step=n_iter)
+                        self.writer.add_scalar('val/acc/top1', val_top1, global_step=n_iter)
+                        self.writer.add_scalar('val/acc/top5', val_top5, global_step=n_iter)
+                        self.model.train()
+
                     # evaluate the model on the test set
                     results_val = finetuning_eval(self.model, epochs=10, lr=0.01, batch_size=32, 
                                                 repeats=1, k_spt=25, k_qry=25, device="cuda", 
                                                 output_dir=None, emb_size=self.args.emb_size)
-                    self.writer.add_scalar('val/mse', results_val.loc['mean']['mse_test'], global_step=n_iter)
-                    self.writer.add_scalar('val/mae', results_val.loc['mean']['mae_test'], global_step=n_iter)
-                    self.writer.add_scalar('val/r2', results_val.loc['mean']['r2_test'], global_step=n_iter)
+                    self.writer.add_scalar('downstream/mse', results_val.loc['mean']['mse_test'], global_step=n_iter)
+                    self.writer.add_scalar('downstream/mae', results_val.loc['mean']['mae_test'], global_step=n_iter)
+                    self.writer.add_scalar('downstream/r2', results_val.loc['mean']['r2_test'], global_step=n_iter)
 
                     if trial is not None:
                         # Report intermediate objective value for pruning

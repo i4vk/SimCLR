@@ -91,7 +91,7 @@ def finetuning_eval(model, epochs=10, lr=0.01, batch_size=32, emb_size=128,
         # Load test data
         preprocessor = PreprocessNIR(savgol=False, scale=False, scale_y=True, 
                                    window_length=15, polyorder=2, deriv=1)
-        test_data = MixedDataset(path="datasets/MangoDataset_by_year", split='test', 
+        test_data = MixedDataset(path="datasets/MixedDataset", split='test', 
                                supp_sz=k_spt, query_sz=k_qry, 
                                preprocessor=preprocessor)
 
@@ -145,39 +145,39 @@ def finetuning_eval(model, epochs=10, lr=0.01, batch_size=32, emb_size=128,
             full_mae = 0.0
             num_instances = 0
 
-            fast_weights.eval()           
-            test_dl = test_task.query_dataloader()
-            for x, y, idx, wl, mask in test_dl:
-                y_true.extend(y.detach().numpy().squeeze(1).tolist())
-                x, y = x.to(device), y.to(device)
-                wl, mask = wl.to(device), mask.to(device)
-                
-                with torch.no_grad():
+            with torch.no_grad():
+                fast_weights.eval()           
+                test_dl = test_task.query_dataloader()
+                for x, y, idx, wl, mask in test_dl:
+                    y_true.extend(y.detach().numpy().squeeze(1).tolist())
+                    x, y = x.to(device), y.to(device)
+                    wl, mask = wl.to(device), mask.to(device)
+                    
                     logits = fast_weights(x, wl, mask)
-                
-                full_mse += ((logits - y) ** 2).sum().item()
-                full_mae += torch.abs(logits - y).sum().detach().cpu()
-                num_instances += y.size(0)
-                
-                y_pred.extend(logits.detach().cpu().numpy().squeeze(1).tolist())
-                y_idx.extend(idx.detach().numpy().tolist())
+                    
+                    full_mse += ((logits - y) ** 2).sum().item()
+                    full_mae += torch.abs(logits - y).sum().detach().cpu()
+                    num_instances += y.size(0)
+                    
+                    y_pred.extend(logits.detach().cpu().numpy().squeeze(1).tolist())
+                    y_idx.extend(idx.detach().numpy().tolist())
 
-            full_mse /= num_instances
-            full_mae /= num_instances
-            full_rmse = np.sqrt(full_mse)
-            full_r2 = r2_score(y_true, y_pred)
-            
-            full_mses_test.append(full_mse)
-            full_maes_test.append(full_mae)
-            full_rmses_test.append(full_rmse)
-            full_r2s_test.append(full_r2)
+                full_mse /= num_instances
+                full_mae /= num_instances
+                full_rmse = np.sqrt(full_mse)
+                full_r2 = r2_score(y_true, y_pred)
+                
+                full_mses_test.append(full_mse)
+                full_maes_test.append(full_mae)
+                full_rmses_test.append(full_rmse)
+                full_r2s_test.append(full_r2)
 
-            preds_df_test.append(pd.DataFrame({
-                "y_true": y_true, 
-                "y_pred": y_pred, 
-                "idx": y_idx, 
-                "name": test_task.name
-            }))
+                preds_df_test.append(pd.DataFrame({
+                    "y_true": y_true, 
+                    "y_pred": y_pred, 
+                    "idx": y_idx, 
+                    "name": test_task.name
+                }))
         
         # Save predictions
         preds_df_test = pd.concat(preds_df_test, axis=0).set_index("idx").sort_index()

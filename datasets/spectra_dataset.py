@@ -66,7 +66,7 @@ def spectral_collate_fn(batch):
 
     # 1) Flatten todas las vistas en una sola lista
     flat_views = []
-    for views, _, _, _ in batch:
+    for views, _, _, _, _ in batch:
         flat_views.extend(views)
 
     # 2) Hacer pad de todos juntos para garantizar el mismo L_max
@@ -82,16 +82,36 @@ def spectral_collate_fn(batch):
     # 4) Separar por vista
     views_padded = [pad_all[:, i] for i in range(n_views)]      # lista de n_views tensores (B,1,L_max)
 
-    # 5) Padding de wl (una sola por muestra) y máscara
-    wls = [wl for _, wl, _, _ in batch]
-    wl_padded = pad_sequence(wls, batch_first=True, padding_value=0.)  # (B, L_max)
-    pad_mask  = (wl_padded == 0.)                                      # (B, L_max)
+    # 5) Padding de wl para cada vista y máscaras
+    flat_wls = []
+    for _, wls_sample, _, _, _ in batch:
+        # wls_sample: lista de n_views tensores 1D
+        flat_wls.extend(wls_sample)
+    # Todas las vistas juntas: (B*n_views, L_i) → pad a (B*n_views, L_max)
+    pad_all_wl = pad_sequence(flat_wls, batch_first=True, padding_value=0.)  # (B*n_views, L_max)
+    # Reagrupar a (B, n_views, L_max)
+    pad_all_wl = pad_all_wl.view(B, n_views, -1)
+    # Separar por vista
+    wls_padded = [pad_all_wl[:, i] for i in range(n_views)]               # lista de n_views tensores (B, L_max)
+    # Máscaras de padding por vista
+    pad_mask = [(wli == 0.) for wli in wls_padded]
 
     # 6) Targets
-    ys = [y for _, _, y, _ in batch]
+    ys = [y for _, _, y, _, _ in batch]
     y_batch = torch.stack(ys, dim=0)                            # (B, …)
 
-    return views_padded, wl_padded, pad_mask, y_batch
+    # 7) datasets
+    # Si hay dataset, extraerlo
+    if batch[0][-1] is not None:
+        datasets = [dataset for _, _, _, _, dataset in batch]
+    else:
+        datasets = None
+
+
+    if datasets is not None:
+        return views_padded, wls_padded, pad_mask, y_batch, datasets
+    else:
+        return views_padded, wls_padded, pad_mask, y_batch
 
 class SpectraDataset(Dataset):
     def __init__(self, root_folder="datasets/spectra", mode="supp", transform=None):
@@ -102,6 +122,12 @@ class SpectraDataset(Dataset):
         # Carga de datos
         self.X = pd.read_csv(os.path.join(root_folder, f'X_{mode}.csv'))
         self.y = pd.read_excel(os.path.join(root_folder, f'y_{mode}.xlsx'))
+
+        if "dataset" in self.y.columns:
+            self.dataset = self.y['dataset']
+            self.y = self.y.drop(columns=['dataset'])
+        else:
+            self.dataset = None
 
         # Wavelength grid
         self.wl_all = self.X.columns.astype(float).to_numpy()
@@ -123,7 +149,12 @@ class SpectraDataset(Dataset):
         intensities = x_row.values[mask_spec].astype(float)
 
         if self.transform:
-            intensities = self.transform(intensities)
+            # Allow transform to adjust both intensities and wl (e.g., cropping)
+            transformed = self.transform(intensities, wl)
+            if isinstance(transformed, tuple) and len(transformed) == 2:
+                intensities, wl = transformed
+            else:
+                intensities = transformed
 
         # Etiquetas y
         y_row = self.y.iloc[idx].values.astype(float)
@@ -132,13 +163,19 @@ class SpectraDataset(Dataset):
         y_scaled = (y_row - self.y_mean) / self.y_std
 
         # Tensores
-        wl_t   = torch.tensor(wl, dtype=torch.float32)
+        if type(wl) == np.ndarray:
+            wl_t   = torch.tensor(wl, dtype=torch.float32)
+        else:
+            wl_t   = wl
         # I_t    = torch.tensor(intensities, dtype=torch.float32)
-        I_t    = intensities
+        if type(intensities) == np.ndarray:
+            I_t = torch.tensor(intensities, dtype=torch.float32).unsqueeze(0)
+        else:
+            I_t    = intensities
         y_t    = torch.tensor(y_scaled, dtype=torch.float32)
         mask_t = torch.tensor(mask_y, dtype=torch.bool)
 
-        return I_t, wl_t, y_t, mask_t
+        return I_t, wl_t, y_t, mask_t, self.dataset.iloc[idx] if self.dataset is not None else None
 
 
 class BatchDataset(Dataset):

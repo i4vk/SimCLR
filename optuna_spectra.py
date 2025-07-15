@@ -31,7 +31,7 @@ def parse_args():
     parser.add_argument('--disable-cuda', action='store_true', help='Disable CUDA')
     parser.add_argument('--gpu-index', type=int, default=0, help='GPU index to use')
     parser.add_argument('--n-views', type=int, default=2, help='Number of views for contrastive training')
-    parser.add_argument('--epochs-adapt', type=int, default=10, help='Adaptation epochs for finetuning')
+    parser.add_argument('--epochs-adapt', type=int, default=25, help='Adaptation epochs for finetuning')
     parser.add_argument('--batch-size-adapt', type=int, default=32, help='Batch size for adaptation')
     parser.add_argument('--k-spt', type=int, default=25, help='Support set size')
     parser.add_argument('--k-qry', type=int, default=25, help='Query set size')
@@ -77,7 +77,7 @@ def objective(trial, args):
     lr = trial.suggest_float('lr', 1e-5, 1e-1, log=True)
     temperature = trial.suggest_float('temperature', 0.01, 0.5)
     out_dim = trial.suggest_int('out_dim', 64, 256, step=64)
-    lr_adapt = 0.0001
+    lr_adapt = 0.000937
 
     # Update args for training
     args.lr = lr
@@ -120,6 +120,11 @@ def objective(trial, args):
         device=args.device)
     # Maximize R2 score
     r2 = results.loc['mean', 'r2_test']
+
+    simclr.writer.close()                # cierra los ficheros de TensorBoard
+    del simclr, model, optimizer, scheduler, train_loader
+    torch.cuda.empty_cache()
+
     return float(r2)
 
 
