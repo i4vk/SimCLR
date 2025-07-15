@@ -3,6 +3,7 @@ import random
 import numpy as np
 from sklearn.decomposition import PCA
 from scipy.signal import savgol_filter
+from typing import Tuple
 
 class AddGaussianNoise(object):
     def __init__(self, std: float = 0.01):
@@ -150,6 +151,27 @@ class EMSA(object):
             c = torch.randn(1, device=x.device) * self.baseline_std
             y = y + c * p
         return y
+    
+class Crop(object):
+    """
+    Recorta horizontalmente el espectro seleccionando una ventana de longitud configurable (por defecto 2/3) en posición aleatoria.
+    """
+    def __init__(self, window_ratio: float = 2/3):
+        assert 0 < window_ratio <= 1, "window_ratio must be in (0,1]"
+        self.window_ratio = window_ratio
+
+    def __call__(self, x: torch.Tensor, wl: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Recorta x y wl: selecciona una ventana de longitud configurable en posición aleatoria.
+        """
+        L = x.shape[-1]
+        window = int(L * self.window_ratio)
+        if window >= L:
+            return x, wl
+        start = random.randint(0, L - window)
+        x_crop = x[..., start:start + window]
+        wl_crop = wl[start:start + window]
+        return x_crop, wl_crop
 
 class SpectralAugment(object):
     """
@@ -163,6 +185,8 @@ class SpectralAugment(object):
         p_shift: float = 0.5,
         p_savgol: float = 0.3,
         p_derivative: float = 0.3,
+        p_crop: float = 0.3,
+        crop_ratio: float = 2/3,
         p_pca: float = 0.3,
         p_emsa: float = 0.3,
         # Parámetros para PCA‐jitter
@@ -201,19 +225,28 @@ class SpectralAugment(object):
             a1_std=emsa_a1_std,
             baseline_std=emsa_baseline_std
         )
+        # Transformación de recorte
+        self.crop = Crop(window_ratio=crop_ratio)
 
         # Probabilidades de aplicación
         self.probs = {
             'noise':     p_noise,
             'scale':     p_scale,
             'shift':     p_shift,
+            'crop':      p_crop,
             'savgol':    p_savgol,
             'derivative':p_derivative,
             'pca':       p_pca  if self.pca_jitter is not None else 0.0,
             'emsa':      p_emsa
         }
 
-    def __call__(self, x: torch.Tensor) -> torch.Tensor:
+    def __call__(self, x: torch.Tensor, wl: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Aplica transformaciones al espectro (x) y ajusta wl si aplica recorte.
+        Returns:
+          x_mod: Tensor con mismo canal y longitud modificada si hubo recorte.
+          wl_mod: Tensor de longitudes de onda correspondiente.
+        """
         # Aplica cada transformador según su probabilidad
         if random.random() < self.probs['noise']:
             x = self.noise(x)
@@ -221,6 +254,9 @@ class SpectralAugment(object):
             x = self.scale(x)
         if random.random() < self.probs['shift']:
             x = self.shift(x)
+        # Crop ajusta también wl
+        if random.random() < self.probs['crop']:
+            x, wl = self.crop(x, wl)
         if random.random() < self.probs['savgol']:
             x = self.savgol(x)
         if random.random() < self.probs['derivative']:
@@ -229,7 +265,7 @@ class SpectralAugment(object):
             x = self.pca_jitter(x)
         if random.random() < self.probs['emsa']:
             x = self.emsa(x)
-        return x
+        return x, wl
 
 ####################################################################################
 

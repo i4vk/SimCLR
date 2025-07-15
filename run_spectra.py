@@ -99,10 +99,16 @@ def main():
 
     dataset = ContrastiveLearningDataset(args.data)
 
-    train_dataset = dataset.get_dataset(args.dataset_name, args.n_views)
+    train_dataset = dataset.get_dataset(args.dataset_name, args.n_views, split='supp')
 
     train_loader = torch.utils.data.DataLoader(
         train_dataset, batch_size=args.batch_size, shuffle=True,
+        num_workers=args.workers, pin_memory=True, drop_last=True,
+        collate_fn=spectral_collate_fn)
+    
+    val_dataset = dataset.get_dataset(args.dataset_name, args.n_views, split='query')
+    val_loader = torch.utils.data.DataLoader(
+        val_dataset, batch_size=args.batch_size, shuffle=True,
         num_workers=args.workers, pin_memory=True, drop_last=True,
         collate_fn=spectral_collate_fn)
 
@@ -116,7 +122,7 @@ def main():
     #  It’s a no-op if the 'gpu_index' argument is a negative integer or None.
     with torch.cuda.device(args.gpu_index):
         simclr = SimCLR(model=model, optimizer=optimizer, scheduler=scheduler, args=args)
-        simclr.train(train_loader)
+        simclr.train(train_loader, val_loader=val_loader)
 
     print("Training completed.")
 
